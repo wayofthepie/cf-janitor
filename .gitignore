@@ -22,3 +22,7 @@ _testmain.go
 *.prof
 
 cf-janitor
+
+# vim
+*.swp
+*.swo
