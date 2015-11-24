@@ -7,14 +7,13 @@ import (
 	"strings"
 	"time"
 	"github.com/cloudfoundry/cli/cf/api/resources"
-	"github.com/cloudfoundry/cli/cf/terminal"
+	//"github.com/cloudfoundry/cli/cf/terminal"
 	"github.com/cloudfoundry/cli/plugin"
 
 )
 
 type JanitorPlugin struct{
 	cliConnection plugin.CliConnection
-	ui 			  terminal.UI
 	before 		  *string
 }
 
@@ -39,21 +38,7 @@ func (c *JanitorPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	c.before = fs.String("before", "", "")
 	fs.Parse(args[1:])
 	c.execute()
-	/*
-	if len(args) < 2 {
-		out, err := cliConnection.CliCommand(args[0], "-h")
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		fmt.Println("w")
-		fmt.Println(strings.Join(out, ""))
-	}*/
-	/*
 
-
-	app := c.filterApps(space.Guid)
-	fmt.Println(app)
-	*/
 }
 
 
@@ -62,9 +47,21 @@ func (c *JanitorPlugin) execute() {
 		if *c.before != "" {
 			space, err := c.cliConnection.GetCurrentSpace()
 			if err != nil {
-				c.ui.Failed(err.Error())
+				fmt.Println(err.Error())
+				return
 			}
-			fmt.Println(fmt.Sprint(c.findAppsBefore(space.Guid)))
+
+			var before time.Time
+			if *c.before == "now" {
+				before = time.Now()
+			} else {
+				before, err = time.Parse(time.RFC3339, *c.before)
+				if err != nil {
+					fmt.Println(err.Error())
+					return
+				}
+			}
+			c.findAppsBefore(space.Guid, before)
 		}
 
 	} else {
@@ -77,7 +74,7 @@ func (c *JanitorPlugin) validArgs() bool {
 
 func (s *JanitorPlugin) hasFlag(fl string, name string) (ret bool) {
 	if ret = (fl != ""); ret == false {
-
+		return
 	}
 	return
 }
@@ -125,19 +122,26 @@ func (c *JanitorPlugin) GetMetadata() plugin.PluginMetadata {
 }
 
 
-func (c* JanitorPlugin) findAppsBefore(spaceGuid string) time.Time {
+func (c* JanitorPlugin) findAppsBefore(spaceGuid string, before time.Time) {
 
 	appCmd := []string{"curl", "/v2/spaces/" + spaceGuid + "/apps"}
 	appsJson, err := c.cliConnection.CliCommandWithoutTerminalOutput(appCmd...)
 
 	if err != nil {
-		c.ui.Failed(err.Error())
+		return
 	}
 
 	res := &resources.PaginatedApplicationResources{}
 	json.Unmarshal([]byte(strings.Join(appsJson,"")), &res)
 
-	return *res.Resources[0].Entity.PackageUpdatedAt
+	for _,appRes := range res.Resources {
+		appName    	   := *appRes.Entity.Name
+		lastUploadStr  := fmt.Sprint(appRes.Entity.PackageUpdatedAt)
+		lastUploadTime := *appRes.Entity.PackageUpdatedAt
+		if lastUploadTime.Before(before) {
+			fmt.Println(appName + " last uploaded " + lastUploadStr)
+		}
+	}
 }
 
 /*
