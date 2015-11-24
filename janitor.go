@@ -2,8 +2,10 @@ package main
 
 import (
     "encoding/json"
+    "errors"
     "flag"
     "fmt"
+    "regexp"
     "strings"
     "time"
     "github.com/cloudfoundry/cli/cf/api/resources"
@@ -15,6 +17,7 @@ import (
 type JanitorPlugin struct{
     cliConnection plugin.CliConnection
     before 		  *string
+    ignore        *string
 }
 
 /*
@@ -34,16 +37,19 @@ type JanitorPlugin struct{
 func (c *JanitorPlugin) Run(cliConnection plugin.CliConnection, args []string) {
     c.cliConnection = cliConnection
 
-    fs := new(flag.FlagSet)
-    c.before = fs.String("before", "", "")
-    fs.Parse(args[1:])
-    c.execute()
-
+    if args[0] != "CLI-MESSAGE-UNINSTALL" {
+        fs := new(flag.FlagSet)
+        c.before = fs.String("before", "", "")
+        c.ignore = fs.String("ignore", "", "")
+        fs.Parse(args[1:])
+        c.execute()
+    }
 }
 
 
 func (c *JanitorPlugin) execute() {
-    if c.validArgs() {
+    err := c.validDefaultArgs()
+    if err == nil {
         if *c.before != "" {
             space, err := c.cliConnection.GetCurrentSpace()
             if err != nil {
@@ -61,20 +67,36 @@ func (c *JanitorPlugin) execute() {
                     return
                 }
             }
-            c.findAppsBefore(space.Guid, before)
+
+            if *c.ignore != "" {
+                ignore, err := regexp.Compile(*c.ignore)
+                if err != nil {
+                    fmt.Println(err.Error())
+                    return
+                }
+                c.findAppsBefore(space.Guid, before, *ignore)
+            } else {
+                c.findAppsBefore(space.Guid, before)
+            }
         }
 
     } else {
+       fmt.Println(err.Error())
     }
 }
 
-func (c *JanitorPlugin) validArgs() bool {
-    return (c.hasFlag(*c.before, "before"))
+/*
+ * Check that the default args have been passed.
+ */
+func (c *JanitorPlugin) validDefaultArgs() (err error) {
+    if ! c.hasFlag(*c.before, "before") {
+        err = errors.New("Missing argument : --before" )
+    }
+    return
 }
 
-func (s *JanitorPlugin) hasFlag(fl string, name string) (ret bool) {
+func (c *JanitorPlugin) hasFlag(fl string, name string) (ret bool) {
     if ret = (fl != ""); ret == false {
-        return
     }
     return
 }
@@ -122,27 +144,38 @@ func (c *JanitorPlugin) GetMetadata() plugin.PluginMetadata {
 }
 
 
-func (c* JanitorPlugin) findAppsBefore(spaceGuid string, before time.Time) {
-
+func (c* JanitorPlugin) findAppsBefore(spaceGuid string, before time.Time, ignore ...regexp.Regexp) {
+    fmt.Println("Finding...")
     appCmd := []string{"curl", "/v2/spaces/" + spaceGuid + "/apps"}
     appsJson, err := c.cliConnection.CliCommandWithoutTerminalOutput(appCmd...)
 
     if err != nil {
+        fmt.Println("Error in apps call")
         return
     }
 
     res := &resources.PaginatedApplicationResources{}
-    json.Unmarshal([]byte(strings.Join(appsJson,"")), &res)
-
+    parseErr := json.Unmarshal([]byte(strings.Join(appsJson,"")), &res)
+    if parseErr != nil {
+        fmt.Println("Error in json parsing!")
+        return
+    }
     for _,appRes := range res.Resources {
-        appName    	   := *appRes.Entity.Name
-        lastUploadStr  := fmt.Sprint(appRes.Entity.PackageUpdatedAt)
-        lastUploadTime := *appRes.Entity.PackageUpdatedAt
-        if lastUploadTime.Before(before) {
-            fmt.Println(appName + " last uploaded " + lastUploadStr)
+        appName := *appRes.Entity.Name
+
+        // If set, does the regex match the appname? If so, ignore it.
+        if len(ignore) !=0 && ignore[0].MatchString(appName) {
+            fmt.Println("Ignoring " + appName)
+        } else {
+            lastUploadStr  := fmt.Sprint(appRes.Entity.PackageUpdatedAt)
+            lastUploadTime := *appRes.Entity.PackageUpdatedAt
+            if lastUploadTime.Before(before) {
+                fmt.Println(appName + " last uploaded " + lastUploadStr)
+            }
         }
     }
 }
+
 
 /*
 * Unlike most Go programs, the `Main()` function will not be used to run all of the
