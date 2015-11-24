@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"strings"
+	"time"
 	"github.com/cloudfoundry/cli/cf/api/resources"
 	"github.com/cloudfoundry/cli/cf/terminal"
 	"github.com/cloudfoundry/cli/plugin"
@@ -12,7 +14,8 @@ import (
 
 type JanitorPlugin struct{
 	cliConnection plugin.CliConnection
-	ui terminal.UI
+	ui 			  terminal.UI
+	before 		  *string
 }
 
 /*
@@ -32,24 +35,52 @@ type JanitorPlugin struct{
 func (c *JanitorPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	c.cliConnection = cliConnection
 
-	if args[0] == "janitor" {
-		fmt.Println("Running the janitor")
-	}
-	fmt.Println(len(args))
+	fs := new(flag.FlagSet)
+	c.before = fs.String("before", "", "")
+	fs.Parse(args[1:])
+	c.execute()
+	/*
 	if len(args) < 2 {
-		cliConnection.CliCommand(args[0], "-h")
-	}
+		out, err := cliConnection.CliCommand(args[0], "-h")
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		fmt.Println("w")
+		fmt.Println(strings.Join(out, ""))
+	}*/
+	/*
 
-	space, err := cliConnection.GetCurrentSpace()
-	if err != nil {
-		c.ui.Failed(err.Error())
-	}
 
 	app := c.filterApps(space.Guid)
 	fmt.Println(app)
+	*/
 }
 
 
+func (c *JanitorPlugin) execute() {
+	if c.validArgs() {
+		if *c.before != "" {
+			space, err := c.cliConnection.GetCurrentSpace()
+			if err != nil {
+				c.ui.Failed(err.Error())
+			}
+			fmt.Println(fmt.Sprint(c.findAppsBefore(space.Guid)))
+		}
+
+	} else {
+	}
+}
+
+func (c *JanitorPlugin) validArgs() bool {
+	return (c.hasFlag(*c.before, "before"))
+}
+
+func (s *JanitorPlugin) hasFlag(fl string, name string) (ret bool) {
+	if ret = (fl != ""); ret == false {
+
+	}
+	return
+}
 
 /*
 *	This function must be implemented as part of the	plugin interface
@@ -94,7 +125,7 @@ func (c *JanitorPlugin) GetMetadata() plugin.PluginMetadata {
 }
 
 
-func (c* JanitorPlugin) filterApps(spaceGuid string) string {
+func (c* JanitorPlugin) findAppsBefore(spaceGuid string) time.Time {
 
 	appCmd := []string{"curl", "/v2/spaces/" + spaceGuid + "/apps"}
 	appsJson, err := c.cliConnection.CliCommandWithoutTerminalOutput(appCmd...)
@@ -106,7 +137,7 @@ func (c* JanitorPlugin) filterApps(spaceGuid string) string {
 	res := &resources.PaginatedApplicationResources{}
 	json.Unmarshal([]byte(strings.Join(appsJson,"")), &res)
 
-	return *res.Resources[0].Entity.Name
+	return *res.Resources[0].Entity.PackageUpdatedAt
 }
 
 /*
