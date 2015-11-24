@@ -1,18 +1,17 @@
 package main
 
 import (
-
+	"encoding/json"
 	"fmt"
+	"strings"
+	"github.com/cloudfoundry/cli/cf/api/resources"
 	"github.com/cloudfoundry/cli/cf/terminal"
 	"github.com/cloudfoundry/cli/plugin"
+
 )
 
-/*
-*	This is the struct implementing the interface defined by the core CLI. It can
-*	be found at  "github.com/cloudfoundry/cli/plugin/plugin.go"
-*
- */
 type JanitorPlugin struct{
+	cliConnection plugin.CliConnection
 	ui terminal.UI
 }
 
@@ -22,7 +21,7 @@ type JanitorPlugin struct{
 *
 *	Run(....) is the entry point when the core CLI is invoking a command defined
 *	by a plugin. The first parameter, plugin.CliConnection, is a struct that can
-*	be used to invoke cli commands. The second paramter, args, is a slice of
+*	be used to invoke cli commands. The second parameter, args, is a slice of
 *	strings. args[0] will be the name of the command, and will be followed by
 *	any additional arguments a cli user typed in.
 *
@@ -31,17 +30,26 @@ type JanitorPlugin struct{
 *	1 should the plugin exits nonzero.
  */
 func (c *JanitorPlugin) Run(cliConnection plugin.CliConnection, args []string) {
-	// Ensure that we called the command basic-plugin-command
+	c.cliConnection = cliConnection
+
 	if args[0] == "janitor" {
 		fmt.Println("Running the janitor")
 	}
-	version, err := cliConnection.ApiVersion()
+	fmt.Println(len(args))
+	if len(args) < 2 {
+		cliConnection.CliCommand(args[0], "-h")
+	}
+
+	space, err := cliConnection.GetCurrentSpace()
 	if err != nil {
 		c.ui.Failed(err.Error())
 	}
 
-	fmt.Println("CLI Version : " + version)
+	app := c.filterApps(space.Guid)
+	fmt.Println(app)
 }
+
+
 
 /*
 *	This function must be implemented as part of the	plugin interface
@@ -78,11 +86,27 @@ func (c *JanitorPlugin) GetMetadata() plugin.PluginMetadata {
 				// UsageDetails is optional
 				// It is used to show help of usage of each command
 				UsageDetails: plugin.Usage{
-					Usage: "janitor\n   cf janitor",
+					Usage: "janitor",
 				},
 			},
 		},
 	}
+}
+
+
+func (c* JanitorPlugin) filterApps(spaceGuid string) string {
+
+	appCmd := []string{"curl", "/v2/spaces/" + spaceGuid + "/apps"}
+	appsJson, err := c.cliConnection.CliCommandWithoutTerminalOutput(appCmd...)
+
+	if err != nil {
+		c.ui.Failed(err.Error())
+	}
+
+	res := &resources.PaginatedApplicationResources{}
+	json.Unmarshal([]byte(strings.Join(appsJson,"")), &res)
+
+	return *res.Resources[0].Entity.Name
 }
 
 /*
