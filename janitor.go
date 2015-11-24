@@ -145,7 +145,6 @@ func (c *JanitorPlugin) GetMetadata() plugin.PluginMetadata {
 
 
 func (c* JanitorPlugin) findAppsBefore(spaceGuid string, before time.Time, ignore ...regexp.Regexp) {
-    fmt.Println("Finding...")
     appCmd := []string{"curl", "/v2/spaces/" + spaceGuid + "/apps"}
     appsJson, err := c.cliConnection.CliCommandWithoutTerminalOutput(appCmd...)
 
