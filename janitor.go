@@ -1,7 +1,9 @@
 package main
 
 import (
+
 	"fmt"
+	"github.com/cloudfoundry/cli/cf/terminal"
 	"github.com/cloudfoundry/cli/plugin"
 )
 
@@ -10,7 +12,9 @@ import (
 *	be found at  "github.com/cloudfoundry/cli/plugin/plugin.go"
 *
  */
-type JanitorPlugin struct{}
+type JanitorPlugin struct{
+	ui terminal.UI
+}
 
 /*
 *	This function must be implemented by any plugin because it is part of the
@@ -31,6 +35,12 @@ func (c *JanitorPlugin) Run(cliConnection plugin.CliConnection, args []string) {
 	if args[0] == "janitor" {
 		fmt.Println("Running the janitor")
 	}
+	version, err := cliConnection.ApiVersion()
+	if err != nil {
+		c.ui.Failed(err.Error())
+	}
+
+	fmt.Println("CLI Version : " + version)
 }
 
 /*
