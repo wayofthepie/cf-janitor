@@ -22,6 +22,7 @@ To fix:
 
 ```bash
 $ cd $GOPATH/src/github.com/cloudfoundry/cli
+$ bin/generate-language-resources
 $ cd - # Back to the root of this project
 $ go install
 ```
